@@ -1,0 +1,25 @@
+#compdef scfmt
+
+_scfmt() {
+  local -a formats
+  formats=(
+    'png:Portable Network Graphics (lossless, best for UI/text)'
+    'jpg:JPEG (lossy, best for photos)'
+    'jpeg:JPEG (alternative spelling)'
+    'gif:Graphics Interchange Format (limited colors, animations)'
+    'tiff:Tagged Image File Format (large, high quality)'
+    'heic:High Efficiency Image Container (modern, compressed)'
+  )
+
+  _arguments -s -S \
+    '(- *)'{-h,--help}'[Show help message]' \
+    '1: :->formats'
+
+  case $state in
+    formats)
+      _describe -t formats 'screenshot format' formats
+      ;;
+  esac
+}
+
+_scfmt "$@"

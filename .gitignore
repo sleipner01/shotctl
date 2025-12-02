@@ -1,0 +1,20 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Zsh
+.zcompdump*
+*.zwc
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Custom
+.zshrc
