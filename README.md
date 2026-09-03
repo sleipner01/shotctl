@@ -39,6 +39,16 @@ To update later: `brew upgrade shotctl`.
 
 Plus `-h`/`--help` and `-v`/`--version`.
 
+Run any setting with no argument and it reports the current value instead of
+erroring, so you never have to remember the `defaults` key:
+
+```console
+$ shotctl location
+location: /Users/you/Screenshots
+
+Change it with:  shotctl location <directory>
+```
+
 Every write is read back and verified, so you find out immediately if macOS
 didn't take the change.
 

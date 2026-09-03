@@ -18,6 +18,14 @@ typeset -A SETTINGS=(
   prefix   name
 )
 
+# How to change each setting, shown when it is queried with no argument.
+typeset -A SETTING_USAGE=(
+  format   "shotctl format <${(j:|:)SUPPORTED_FORMATS}>"
+  location "shotctl location <directory>"
+  shadow   "shotctl shadow <on|off>"
+  prefix   "shotctl prefix <string>"
+)
+
 die()  { print -ru2 -- "Error: $*"; exit 1; }
 warn() { print -ru2 -- "Warning: $*"; }
 
@@ -26,6 +34,8 @@ usage() {
 shotctl $VERSION — control macOS screenshot settings
 
 Usage: shotctl <command> [args]
+
+Run any setting with no argument to see its current value.
 
 Commands:
   format <fmt>        Set the screenshot image format
@@ -42,8 +52,9 @@ Options:
   -v, --version       Show version
 
 Examples:
-  shotctl format png
+  shotctl location            # what is it now?
   shotctl location ~/Screenshots
+  shotctl format png
   shotctl shadow off
   shotctl prefix Shot
   shotctl status
@@ -77,8 +88,36 @@ set_bool() {
   verify "$key" "$expected" "$label"
 }
 
+# Human-readable current value of one setting, naming the macOS default
+# when the key is unset.
+setting_value() {
+  local raw
+  raw=$(read_default "${SETTINGS[$1]}")
+  case $1 in
+    format)   print -r -- "${raw:-png (default)}" ;;
+    location) print -r -- "${raw:-Desktop (default)}" ;;
+    prefix)   print -r -- "${raw:-Screenshot (default)}" ;;
+    shadow)
+      case $raw in
+        1) print -r -- "off" ;;
+        0) print -r -- "on" ;;
+        *) print -r -- "on (default)" ;;
+      esac
+      ;;
+  esac
+}
+
+# A bare `shotctl <setting>` reports the current value rather than erroring:
+# asking what a setting is set to is likelier than a malformed write.
+show_current() {
+  print -- "$1: $(setting_value "$1")"
+  print --
+  print -- "Change it with:  ${SETTING_USAGE[$1]}"
+}
+
 cmd_format() {
-  (( $# == 1 )) || die "usage: shotctl format <${(j:|:)SUPPORTED_FORMATS}>"
+  (( $# )) || { show_current format; return 0 }
+  (( $# == 1 )) || die "usage: ${SETTING_USAGE[format]}"
   local fmt=${1:l}
   if (( ! ${SUPPORTED_FORMATS[(Ie)$fmt]} )); then
     warn "'$fmt' is not in the known list: ${SUPPORTED_FORMATS[*]}"
@@ -88,7 +127,8 @@ cmd_format() {
 }
 
 cmd_location() {
-  (( $# == 1 )) || die "usage: shotctl location <directory>"
+  (( $# )) || { show_current location; return 0 }
+  (( $# == 1 )) || die "usage: ${SETTING_USAGE[location]}"
   local dir=${~1}
   # macOS silently falls back to the Desktop for a bad path, which looks
   # exactly like the tool failed — so refuse up front instead.
@@ -97,7 +137,8 @@ cmd_location() {
 }
 
 cmd_shadow() {
-  (( $# == 1 )) || die "usage: shotctl shadow <on|off>"
+  (( $# )) || { show_current shadow; return 0 }
+  (( $# == 1 )) || die "usage: ${SETTING_USAGE[shadow]}"
   # Note the inversion: the underlying key is disable-shadow.
   case ${1:l} in
     on)  set_bool disable-shadow false "shadow (on)"  ;;
@@ -107,31 +148,19 @@ cmd_shadow() {
 }
 
 cmd_prefix() {
-  (( $# == 1 )) || die "usage: shotctl prefix <string>"
+  (( $# )) || { show_current prefix; return 0 }
+  (( $# == 1 )) || die "usage: ${SETTING_USAGE[prefix]}"
   [[ -n $1 ]] || die "prefix cannot be empty."
   set_string name "$1" "prefix"
 }
 
 cmd_status() {
   (( $# == 0 )) || die "status takes no arguments."
-  local type_v location_v shadow_v prefix_v shadow_label
-  type_v=$(read_default type)
-  location_v=$(read_default location)
-  shadow_v=$(read_default disable-shadow)
-  prefix_v=$(read_default name)
-
-  case $shadow_v in
-    1) shadow_label="off" ;;
-    0) shadow_label="on" ;;
-    *) shadow_label="on (default)" ;;
-  esac
-
+  local name
   print -- "$DOMAIN"
-  printf "  %-9s %s\n" \
-    "format"   "${type_v:-png (default)}" \
-    "location" "${location_v:-Desktop (default)}" \
-    "shadow"   "$shadow_label" \
-    "prefix"   "${prefix_v:-Screenshot (default)}"
+  for name in $SETTING_NAMES; do
+    printf "  %-9s %s\n" "$name" "$(setting_value "$name")"
+  done
 }
 
 cmd_reset() {
