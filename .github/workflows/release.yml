@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  bump-formula:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Compute tarball checksum
+        id: meta
+        run: |
+          URL="https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${GITHUB_REF_NAME}.tar.gz"
+          # The auto-generated tarball can lag the tag push by a second or two.
+          for _ in 1 2 3 4 5; do
+            SHA=$(curl -fsSL "$URL" | shasum -a 256 | cut -d' ' -f1) && break
+            sleep 5
+          done
+          [ -n "${SHA:-}" ] || { echo "could not fetch $URL"; exit 1; }
+          {
+            echo "version=${GITHUB_REF_NAME#v}"
+            echo "url=$URL"
+            echo "sha=$SHA"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Checkout tap
+        uses: actions/checkout@v4
+        with:
+          repository: sleipner01/homebrew-tap
+          token: ${{ secrets.TAP_GITHUB_TOKEN }}
+          path: tap
+
+      - name: Bump formula
+        working-directory: tap
+        run: |
+          sed -i -E \
+            -e 's|^  url ".*"|  url "${{ steps.meta.outputs.url }}"|' \
+            -e 's|^  sha256 ".*"|  sha256 "${{ steps.meta.outputs.sha }}"|' \
+            Formula/shotctl.rb
+          git diff --exit-code && { echo "formula unchanged, nothing to push"; exit 0; }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "shotctl ${{ steps.meta.outputs.version }}"
+          git push
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes

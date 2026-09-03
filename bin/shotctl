@@ -1,0 +1,180 @@
+#!/usr/bin/env zsh
+
+# shotctl — control macOS screenshot settings.
+# https://github.com/sleipner01/shotctl
+
+set -u
+
+VERSION="dev"   # rewritten at install time by the Homebrew formula
+DOMAIN="com.apple.screencapture"
+SUPPORTED_FORMATS=(png jpg jpeg pdf tiff gif bmp heic)
+
+# Friendly setting names, in display order, mapped to their `defaults` keys.
+SETTING_NAMES=(format location shadow prefix)
+typeset -A SETTINGS=(
+  format   type
+  location location
+  shadow   disable-shadow
+  prefix   name
+)
+
+die()  { print -ru2 -- "Error: $*"; exit 1; }
+warn() { print -ru2 -- "Warning: $*"; }
+
+usage() {
+  cat <<EOF
+shotctl $VERSION — control macOS screenshot settings
+
+Usage: shotctl <command> [args]
+
+Commands:
+  format <fmt>        Set the screenshot image format
+                        ${SUPPORTED_FORMATS[*]}
+  location <dir>      Set the directory screenshots are saved to
+  shadow <on|off>     Include or drop the window shadow on window captures
+  prefix <string>     Set the screenshot filename prefix
+  status              Show all current settings
+  reset [setting]     Restore one setting (or all) to the macOS default
+                        ${SETTING_NAMES[*]}
+
+Options:
+  -h, --help          Show this help
+  -v, --version       Show version
+
+Examples:
+  shotctl format png
+  shotctl location ~/Screenshots
+  shotctl shadow off
+  shotctl prefix Shot
+  shotctl status
+EOF
+}
+
+read_default() { defaults read "$DOMAIN" "$1" 2>/dev/null }
+
+# Read a key back after writing it, so we report what macOS actually stored
+# rather than assuming the write took.
+verify() {
+  local key=$1 expected=$2 label=$3 now
+  now=$(read_default "$key")
+  if [[ "$now" == "$expected" ]]; then
+    print -- "✓ $label → $now"
+  else
+    warn "$label was written, but reads back as '$now' (expected '$expected')."
+  fi
+}
+
+set_string() {
+  local key=$1 value=$2 label=$3
+  defaults write "$DOMAIN" "$key" -string "$value" || die "failed to set $label."
+  verify "$key" "$value" "$label"
+}
+
+set_bool() {
+  local key=$1 value=$2 label=$3   # value is true|false
+  local expected; [[ $value == true ]] && expected=1 || expected=0
+  defaults write "$DOMAIN" "$key" -bool "$value" || die "failed to set $label."
+  verify "$key" "$expected" "$label"
+}
+
+cmd_format() {
+  (( $# == 1 )) || die "usage: shotctl format <${(j:|:)SUPPORTED_FORMATS}>"
+  local fmt=${1:l}
+  if (( ! ${SUPPORTED_FORMATS[(Ie)$fmt]} )); then
+    warn "'$fmt' is not in the known list: ${SUPPORTED_FORMATS[*]}"
+    print -ru2 -- "         macOS may still accept it, but double-check."
+  fi
+  set_string type "$fmt" "format"
+}
+
+cmd_location() {
+  (( $# == 1 )) || die "usage: shotctl location <directory>"
+  local dir=${~1}
+  # macOS silently falls back to the Desktop for a bad path, which looks
+  # exactly like the tool failed — so refuse up front instead.
+  [[ -d $dir ]] || die "no such directory: $1"
+  set_string location "${dir:A}" "location"
+}
+
+cmd_shadow() {
+  (( $# == 1 )) || die "usage: shotctl shadow <on|off>"
+  # Note the inversion: the underlying key is disable-shadow.
+  case ${1:l} in
+    on)  set_bool disable-shadow false "shadow (on)"  ;;
+    off) set_bool disable-shadow true  "shadow (off)" ;;
+    *)   die "expected 'on' or 'off', got '$1'." ;;
+  esac
+}
+
+cmd_prefix() {
+  (( $# == 1 )) || die "usage: shotctl prefix <string>"
+  [[ -n $1 ]] || die "prefix cannot be empty."
+  set_string name "$1" "prefix"
+}
+
+cmd_status() {
+  (( $# == 0 )) || die "status takes no arguments."
+  local type_v location_v shadow_v prefix_v shadow_label
+  type_v=$(read_default type)
+  location_v=$(read_default location)
+  shadow_v=$(read_default disable-shadow)
+  prefix_v=$(read_default name)
+
+  case $shadow_v in
+    1) shadow_label="off" ;;
+    0) shadow_label="on" ;;
+    *) shadow_label="on (default)" ;;
+  esac
+
+  print -- "$DOMAIN"
+  printf "  %-9s %s\n" \
+    "format"   "${type_v:-png (default)}" \
+    "location" "${location_v:-Desktop (default)}" \
+    "shadow"   "$shadow_label" \
+    "prefix"   "${prefix_v:-Screenshot (default)}"
+}
+
+cmd_reset() {
+  local setting
+  if (( $# == 0 )); then
+    print -n -- "Reset all shotctl-managed screenshot settings to macOS defaults? [y/N] "
+    local reply; read -r reply
+    [[ ${reply:l} == (y|yes) ]] || { print -- "Aborted."; return 0 }
+    for setting in $SETTING_NAMES; do
+      defaults delete "$DOMAIN" "${SETTINGS[$setting]}" 2>/dev/null
+    done
+    print -- "✓ All settings reset to macOS defaults."
+  else
+    (( $# == 1 )) || die "usage: shotctl reset [${(j:|:)SETTING_NAMES}]"
+    setting=${1:l}
+    [[ -n ${SETTINGS[$setting]-} ]] || die "unknown setting '$1'. Valid: ${SETTING_NAMES[*]}"
+    defaults delete "$DOMAIN" "${SETTINGS[$setting]}" 2>/dev/null
+    print -- "✓ $setting reset to macOS default."
+  fi
+}
+
+# --- entry point ---------------------------------------------------------
+
+# Help and version answer before the platform guard, so they work anywhere.
+if (( $# == 0 )); then
+  usage
+  exit 0
+fi
+
+case "$1" in
+  -h|--help|help) usage; exit 0 ;;
+  -v|--version)   print -- "shotctl $VERSION"; exit 0 ;;
+esac
+
+[[ "$(uname)" == "Darwin" ]] || die "shotctl only works on macOS."
+
+command=$1; shift
+case "$command" in
+  format|location|shadow|prefix|status|reset) "cmd_$command" "$@" ;;
+  *)
+    print -ru2 -- "Error: unknown command '$command'."
+    print -ru2 --
+    usage >&2
+    exit 1
+    ;;
+esac
