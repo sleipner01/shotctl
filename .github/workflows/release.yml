@@ -28,7 +28,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Checkout tap
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: sleipner01/homebrew-tap
           token: ${{ secrets.TAP_GITHUB_TOKEN }}
