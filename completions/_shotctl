@@ -1,0 +1,49 @@
+#compdef shotctl
+
+_shotctl() {
+  local curcontext="$curcontext" state
+  local -a commands formats
+
+  commands=(
+    'format:Set the screenshot image format'
+    'location:Set the directory screenshots are saved to'
+    'shadow:Include or drop the window shadow on window captures'
+    'prefix:Set the screenshot filename prefix'
+    'status:Show all current settings'
+    'reset:Restore one setting (or all) to the macOS default'
+  )
+
+  formats=(
+    'png:Portable Network Graphics (lossless, best for UI/text)'
+    'jpg:JPEG (lossy, best for photos)'
+    'jpeg:JPEG (alternative spelling)'
+    'pdf:Portable Document Format (vector-friendly, print)'
+    'tiff:Tagged Image File Format (large, high quality)'
+    'gif:Graphics Interchange Format (limited colors, animations)'
+    'bmp:Bitmap (uncompressed, rarely useful)'
+    'heic:High Efficiency Image Container (modern, compressed)'
+  )
+
+  _arguments -C \
+    '(- *)'{-h,--help}'[Show help message]' \
+    '(- *)'{-v,--version}'[Show version]' \
+    '1: :->command' \
+    '*:: :->args'
+
+  case $state in
+    command)
+      _describe -t commands 'shotctl command' commands
+      ;;
+    args)
+      case $words[1] in
+        format)   _describe -t formats 'screenshot format' formats ;;
+        location) _directories ;;
+        shadow)   _values 'shadow state' on off ;;
+        prefix)   _message 'filename prefix' ;;
+        reset)    _values 'setting' format location shadow prefix ;;
+      esac
+      ;;
+  esac
+}
+
+_shotctl "$@"
