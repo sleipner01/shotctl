@@ -41,7 +41,10 @@ jobs:
             -e 's|^  url ".*"|  url "${{ steps.meta.outputs.url }}"|' \
             -e 's|^  sha256 ".*"|  sha256 "${{ steps.meta.outputs.sha }}"|' \
             Formula/shotctl.rb
-          git diff --exit-code && { echo "formula unchanged, nothing to push"; exit 0; }
+          if git diff --quiet; then
+            echo "formula unchanged, nothing to push"
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -am "shotctl ${{ steps.meta.outputs.version }}"
